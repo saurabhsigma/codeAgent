@@ -1,5 +1,5 @@
-import { Builder } from "@/components/builder";
+import { redirect } from "next/navigation";
 
 export default function Home() {
-  return <Builder />;
+  redirect("/dashboard");
 }

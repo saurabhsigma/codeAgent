@@ -3,8 +3,20 @@ const apiBaseUrl =
 
 type ProjectResponse = {
   projectId: string;
+  name: string;
   files: string[];
   previewUrl: string;
+  createdAt: string;
+};
+
+type ProjectListItem = {
+  projectId: string;
+  name: string;
+  description: string;
+  prompt: string;
+  thumbnail: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 type FileResponse = {
@@ -35,16 +47,41 @@ async function handleResponse<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
 
-export async function createProject(prompt: string) {
+export async function createProject(prompt: string, name?: string) {
   const response = await fetch(`${apiBaseUrl}/api/projects`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ prompt }),
+    body: JSON.stringify({ prompt, name }),
   });
 
   return handleResponse<ProjectResponse>(response);
+}
+
+export async function getAllProjects() {
+  const response = await fetch(`${apiBaseUrl}/api/projects`);
+  return handleResponse<{ projects: ProjectListItem[] }>(response);
+}
+
+export async function updateProjectMetadata(projectId: string, name: string, description?: string) {
+  const response = await fetch(`${apiBaseUrl}/api/projects/${projectId}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ name, description }),
+  });
+
+  return handleResponse<{ ok: boolean }>(response);
+}
+
+export async function deleteProject(projectId: string) {
+  const response = await fetch(`${apiBaseUrl}/api/projects/${projectId}`, {
+    method: "DELETE",
+  });
+
+  return handleResponse<{ ok: boolean }>(response);
 }
 
 export async function editProject(projectId: string, prompt: string) {

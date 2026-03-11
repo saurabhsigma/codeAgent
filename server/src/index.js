@@ -1,171 +1,121 @@
-import archiver from "archiver";
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
-import fs from "fs/promises";
-import path from "path";
-import { fileURLToPath } from "url";
+import mongoose from "mongoose";
+import { Project } from "./models/Project.js";
 
 dotenv.config();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const rootDir = path.resolve(__dirname, "..");
-const projectsDir = path.resolve(rootDir, process.env.PROJECTS_DIR ?? "../projects");
 const app = express();
 const port = Number(process.env.PORT ?? 4000);
 const groqApiKey = process.env.GROQ_API_KEY;
 const groqModel = process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile";
 const frontendUrl = process.env.FRONTEND_URL ?? "http://localhost:3000";
+const mongodbUri = process.env.MONGODB_URI ?? "mongodb://localhost:27017/ai-website-builder";
 
 app.use(cors({ origin: frontendUrl }));
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "10mb" }));
+
+// Connect to MongoDB
+mongoose.connect(mongodbUri)
+  .then(() => console.log("✅ Connected to MongoDB"))
+  .catch((err) => console.error("❌ MongoDB connection error:", err));
 
 function createProjectId() {
   return `project-${Date.now()}`;
 }
 
-function sanitizeRelativePath(filePath) {
-  const normalized = path.posix.normalize(filePath.replace(/\\/g, "/"));
-
-  // Prevent writes outside the generated project folder.
-  if (
-    normalized.startsWith("../") ||
-    normalized.includes("/../") ||
-    normalized === ".." ||
-    path.isAbsolute(normalized)
-  ) {
-    throw new Error("Invalid file path.");
-  }
-
-  return normalized;
-}
-
 function buildGenerationPrompt(userPrompt) {
-  return `You are an expert senior web developer and UI/UX designer specializing in accessible, stunning designs.
-Generate a BEAUTIFUL, professional website with PERFECT contrast and readability.
+  return `You are an expert senior web developer specializing in PREMIUM, accessible designs.
 
-CRITICAL CONTRAST RULES:
-- White/light text (text-white, text-gray-100) ONLY on dark backgrounds
-- Dark text (text-gray-900, text-gray-800) ONLY on light backgrounds
-- On gradient backgrounds, use text-white with text-shadow for readability
-- Ensure minimum 4.5:1 contrast ratio for normal text, 3:1 for large text
-- Test every text element for readability
+STEP 1: ANALYZE USER REQUEST FOR CONTEXT
+Identify the website type and extract relevant keywords:
+- Restaurant/Food → keywords: food, restaurant, dining, cuisine, chef
+- Gym/Fitness → keywords: fitness, gym, workout, sports, training
+- Tech/SaaS → keywords: technology, office, business, modern, digital
+- Fashion → keywords: fashion, shopping, style, model, clothing
+- Travel/Hotel → keywords: travel, hotel, vacation, resort, destination
+- Real Estate → keywords: house, property, architecture, interior, home
+- Portfolio → keywords: creative, art, design, workspace, studio
+- Healthcare → keywords: medical, health, clinic, hospital, care
+- Education → keywords: education, learning, school, students, campus
 
-COLOR SCHEME GUIDELINES:
-- Dark sections: Use dark backgrounds (bg-gray-900, bg-slate-900) with text-white
-- Light sections: Use light backgrounds (bg-white, bg-gray-50) with text-gray-900
-- Gradient sections: Use text-white with text-shadow-lg for glow effect
-- Cards on dark backgrounds: Use bg-white/10 backdrop-blur with text-white
-- Cards on light backgrounds: Use bg-white with text-gray-900 and shadow
-- Buttons: High contrast - dark buttons need text-white, light buttons need text-gray-900
+STEP 2: CONTEXT-AWARE IMAGES (MANDATORY!)
+⚠️ USE RELEVANT IMAGES MATCHING THE BUSINESS TYPE!
+Format: https://picsum.photos/seed/{relevant-keyword}{number}/{width}/{height}
 
-TAILWIND DESIGN SYSTEM:
-- Backgrounds:
-  * Dark sections: bg-gradient-to-br from-gray-900 via-purple-900 to-violet-900
-  * Light sections: bg-gradient-to-br from-white to-gray-50
-  * Glass cards: backdrop-blur-xl bg-white/10 border border-white/20 (on dark)
-  * Solid cards: bg-white shadow-2xl shadow-purple-500/20 (on light)
-  
-- Typography:
-  * Headlines on dark: text-white font-bold text-5xl
-  * Headlines on light: text-gray-900 font-bold text-5xl
-  * Gradient text: text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400
-  * Body on dark: text-gray-300 text-lg
-  * Body on light: text-gray-600 text-lg
-  
-- Buttons:
-  * Primary: bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700
-  * Secondary: border-2 border-white text-white hover:bg-white hover:text-gray-900
-  * On light: bg-gray-900 text-white hover:bg-gray-800
-  
-- Shadows & Effects:
-  * Cards: shadow-2xl shadow-purple-500/30
-  * Hover: hover:shadow-3xl hover:-translate-y-2 transition-all duration-300
-  * Glow: drop-shadow-[0_0_15px_rgba(168,85,247,0.5)]
+EXAMPLES:
+- GYM website → seed/fitness1, seed/workout2, seed/gym3, seed/sports4
+- RESTAURANT → seed/food1, seed/restaurant2, seed/dining3, seed/cuisine4
+- TECH startup → seed/technology1, seed/office2, seed/business3, seed/modern4
 
-LAYOUT PATTERNS:
-- Alternate dark and light sections for visual rhythm
-- Hero: MUST have hero image (https://picsum.photos/seed/hero/1920/1080)
-- Features: MUST have feature images on cards
-- CTA sections: Dark gradient with white text
-- Gallery/Portfolio: MUST have multiple images in grid
-- About/Team: MUST have team/about images
-- Footer: Dark background with light text
-- Generous padding: py-20 px-8 for sections
-- Every major section should have at least one image
+REQUIRED IMAGES (minimum 5-8 images):
+1. Hero: <img src="https://picsum.photos/seed/{keyword}1/1920/1080" alt="..." class="absolute inset-0 w-full h-full object-cover">
+2. Features (3-4): <img src="https://picsum.photos/seed/{keyword}2/600/400" alt="..." class="w-full rounded-2xl hover:scale-110 transition duration-500">
+3. Gallery (4-6): <img src="https://picsum.photos/seed/{keyword}5/800/600" alt="..." class="rounded-xl shadow-2xl">
 
-IMAGES - MANDATORY REQUIREMENT:
-⚠️ YOU MUST INCLUDE IMAGES IN THE HTML - DO NOT SKIP THIS!
-- Use Picsum Photos API in <img> tags
-- Format: <img src="https://picsum.photos/seed/{word}/{width}/{height}" alt="..." class="..." loading="lazy">
-- REQUIRED images:
-  1. Hero section: <img src="https://picsum.photos/seed/hero/1600/900" alt="Hero" class="w-full h-full object-cover rounded-xl">
-  2. Feature cards (3+): 
-     * <img src="https://picsum.photos/seed/feature1/600/400" alt="Feature 1" class="rounded-lg">
-     * <img src="https://picsum.photos/seed/feature2/600/400" alt="Feature 2" class="rounded-lg">
-     * <img src="https://picsum.photos/seed/feature3/600/400" alt="Feature 3" class="rounded-lg">
-  3. About/Team section: <img src="https://picsum.photos/seed/team/800/600" alt="Team" class="rounded-xl shadow-xl">
-  4. Gallery items: seed/gallery1, seed/gallery2, seed/gallery3
-- Each seed word MUST be different
-- Include 5-10 images throughout the page
-- Example full tag: <img src="https://picsum.photos/seed/business/1200/800" alt="Business meeting" class="w-full h-64 object-cover rounded-xl shadow-lg" loading="lazy">
+PREMIUM DESIGN - TAILWIND CSS:
+- Use LARGE, BOLD typography: text-6xl md:text-8xl font-black
+- Rounded buttons: px-10 py-4 rounded-full text-lg font-bold
+- Generous spacing: py-24 md:py-32 for sections
+- Glass morphism: backdrop-blur-xl bg-white/10 border border-white/20
+- Premium shadows: shadow-2xl shadow-purple-500/30
+- Smooth animations: hover:scale-105 hover:-translate-y-3 transition-all duration-500
+- Sticky navbar: fixed top-0 backdrop-blur-md bg-white/80
 
-ANIMATIONS (add to style.css):
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(30px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-@keyframes slideInLeft {
-  from { opacity: 0; transform: translateX(-30px); }
-  to { opacity: 1; transform: translateX(0); }
-}
-.animate-fade-in-up { animation: fadeInUp 0.8s ease-out forwards; }
-.animate-slide-in-left { animation: slideInLeft 0.8s ease-out forwards; }
+CONTRAST RULES (CRITICAL):
+- Dark backgrounds (bg-gray-900) → text-white
+- Light backgrounds (bg-white, bg-gray-50) → text-gray-900
+- Gradient overlays → text-white with text-shadow
 
-CONTENT:
-- Write compelling, professional, realistic content
-- Powerful headlines with action verbs
-- Clear value propositions
-- Realistic pricing, testimonials, features
-- Professional tone matching the industry
-
-HTML STRUCTURE:
+PREMIUM HTML TEMPLATE:
 <!DOCTYPE html>
 <html lang="en" class="scroll-smooth">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Professional Title</title>
+  <title>Title Here</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body class="antialiased">
-  <!-- Navbar -->
+  <!-- Sticky Navbar -->
+  <nav class="fixed top-0 w-full z-50 backdrop-blur-md bg-white/90 border-b">
+    <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+      <div class="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">Logo</div>
+      <button class="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-8 py-3 rounded-full font-semibold hover:scale-105 transition shadow-lg">Get Started</button>
+    </div>
+  </nav>
   
-  <!-- Hero with BACKGROUND IMAGE or IMG TAG -->
-  <section class="relative h-screen">
-    <img src="https://picsum.photos/seed/hero/1920/1080" alt="Hero" class="absolute inset-0 w-full h-full object-cover">
-    <div class="absolute inset-0 bg-gradient-to-r from-purple-900/80 to-pink-900/80"></div>
-    <div class="relative z-10 flex items-center justify-center h-full text-center text-white">
-      <div>
-        <h1 class="text-6xl font-bold">Headline</h1>
-        <p class="text-xl mt-4">Description</p>
+  <!-- Hero with Context Image -->
+  <section class="relative h-screen flex items-center justify-center pt-16">
+    <img src="https://picsum.photos/seed/{RELEVANT}1/1920/1080" alt="Hero" class="absolute inset-0 w-full h-full object-cover">
+    <div class="absolute inset-0 bg-gradient-to-r from-purple-900/90 to-pink-900/80"></div>
+    <div class="relative z-10 text-center text-white max-w-6xl mx-auto px-6">
+      <h1 class="text-6xl md:text-8xl font-black leading-tight animate-fade-in-up">
+        Powerful Headline
+      </h1>
+      <p class="text-xl md:text-2xl mt-6 text-gray-200">Compelling subheadline</p>
+      <div class="mt-12 flex gap-4 justify-center">
+        <button class="bg-white text-gray-900 px-10 py-4 rounded-full text-lg font-bold hover:scale-105 transition shadow-2xl">Primary CTA</button>
+        <button class="border-2 border-white text-white px-10 py-4 rounded-full text-lg font-semibold hover:bg-white hover:text-gray-900 transition">Secondary</button>
       </div>
     </div>
   </section>
   
-  <!-- Features with IMAGES -->
-  <section class="py-20 px-8 bg-white">
-    <div class="grid md:grid-cols-3 gap-8">
-      <div class="bg-white rounded-xl shadow-xl">
-        <img src="https://picsum.photos/seed/feature1/600/400" alt="Feature" class="w-full rounded-t-xl">
-        <div class="p-6">
-          <h3 class="text-2xl font-bold text-gray-900">Feature 1</h3>
-          <p class="text-gray-600 mt-2">Description</p>
+  <!-- Features with Context Images -->
+  <section class="py-32 bg-gradient-to-br from-white to-gray-50">
+    <div class="max-w-7xl mx-auto px-6">
+      <h2 class="text-5xl md:text-6xl font-black text-gray-900 text-center mb-20">Features</h2>
+      <div class="grid md:grid-cols-3 gap-12">
+        <div class="group">
+          <div class="overflow-hidden rounded-2xl shadow-2xl">
+            <img src="https://picsum.photos/seed/{RELEVANT}2/600/400" alt="Feature" class="w-full group-hover:scale-110 transition duration-500">
+          </div>
+          <h3 class="text-2xl font-bold text-gray-900 mt-6">Feature Title</h3>
+          <p class="text-gray-600 mt-3 text-lg">Description here</p>
         </div>
       </div>
-      <!-- MORE CARDS WITH IMAGES -->
     </div>
   </section>
   
@@ -173,19 +123,36 @@ HTML STRUCTURE:
 </body>
 </html>
 
-JAVASCRIPT FEATURES:
-- Intersection Observer for scroll animations
-- Smooth scroll navigation
+ANIMATIONS (style.css):
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(40px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in-up { animation: fadeInUp 1s ease-out forwards; }
+
+JAVASCRIPT (script.js):
+⚠️ CRITICAL: Check elements exist before adding event listeners!
+Example:
+const btn = document.querySelector('.menu-btn');
+if (btn) { btn.addEventListener('click', () => {...}); }
+
+Include:
+- Intersection Observer for scroll fade-ins
+- Smooth scroll to sections
 - Navbar background change on scroll
-- Mobile menu toggle
-- Add 'active' class to fade in elements
+- Mobile menu toggle (with null checks!)
 
-REQUIRED FILES:
-1. index.html - Full structure with Tailwind
-2. style.css - Custom animations and utilities
-3. script.js - Interactions and scroll effects
+⚠️ IMPORTANT FILE RULES:
+1. Only reference files that you actually create (index.html, style.css, script.js)
+2. Do NOT reference phantom files like "layout.css" that don't exist
+3. If using CSS, include it as style.css and link properly
+4. Check for null before addEventListener on ALL elements
 
-Return JSON format:
+⚠️ CRITICAL JSON FORMAT:
+Return ONLY valid JSON, no markdown, no code blocks, no backticks in content!
+Escape all special characters properly in strings.
+
+Return JSON:
 {
   "files": [
     { "name": "index.html", "content": "..." },
@@ -196,69 +163,46 @@ Return JSON format:
 
 User request: ${userPrompt}
 
-Create a STUNNING website with PERFECT contrast, readable text, and eye-catching modern design. Every text element must be easily readable.`;
-}
-
-function buildEditPrompt(userPrompt, existingFiles) {
-  const filesContext = existingFiles
-    .map((file) => `File: ${file.name}\n\`\`\`\n${file.content}\n\`\`\``)
-    .join("\n\n");
-
-  return `You are an expert senior web developer and UI/UX designer.
-Edit the existing website to improve it based on the user's request.
-
-Current project files:
-${filesContext}
-
-MAINTAIN PROFESSIONAL STANDARDS:
-- CRITICAL: Maintain proper text/background contrast
-- White text ONLY on dark backgrounds
-- Dark text ONLY on light backgrounds
-- Keep Tailwind CSS for stunning design
-- Use Picsum Photos: https://picsum.photos/seed/{keyword}/{width}/{height}
-- Different seed words for each image
-- Maintain alternating dark/light sections
-- Preserve glass morphism and modern effects
-- Keep animations and smooth transitions
-- Maintain accessibility and readability
-- Keep semantic HTML5 structure
-- Preserve CSS variables and modern patterns
-- Keep smooth animations and transitions
-- Maintain responsive design
-- Keep professional content and realistic data
-
-APPLY THE REQUESTED CHANGES:
-- Make the specific modifications requested
-- Enhance rather than simplify (unless asked)
-- Add features professionally
-- Maintain or improve code quality
-- Keep consistent styling and design language
-
-Return ALL files in JSON format (modified and unmodified):
-{
-  "files": [
-    { "name": "index.html", "content": "..." },
-    { "name": "style.css", "content": "..." },
-    { "name": "script.js", "content": "..." }
-  ]
-}
-
-User edit request: ${userPrompt}
-
-Apply changes while maintaining professional quality.`;
+CREATE PREMIUM WEBSITE WITH:
+1. CONTEXT-AWARE images (analyze request and use relevant keywords!)
+2. BOLD, stunning design with Tailwind
+3. PERFECT contrast
+4. SMOOTH animations
+5. PROFESSIONAL content`;
 }
 
 function extractJson(rawText) {
   try {
     return JSON.parse(rawText);
-  } catch {
-    // Some local models wrap JSON in markdown or extra prose; recover the object.
-    const match = rawText.match(/\{[\s\S]*\}/);
-    if (!match) {
-      throw new Error("Model did not return JSON.");
+  } catch (firstError) {
+    // Try to extract JSON from markdown code blocks
+    const codeBlockMatch = rawText.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+    if (codeBlockMatch) {
+      try {
+        return JSON.parse(codeBlockMatch[1]);
+      } catch {}
     }
-
-    return JSON.parse(match[0]);
+    
+    // Try to find JSON object in the text
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.error("Failed to extract JSON. Raw response:", rawText.substring(0, 500));
+      throw new Error("Model did not return valid JSON. Check server logs for details.");
+    }
+    
+    // Clean common issues: remove backticks, fix escaped quotes
+    let cleaned = jsonMatch[0]
+      .replace(/`/g, '"')  // Replace backticks with quotes
+      .replace(/\\'/g, "'")  // Unescape single quotes
+      .replace(/\n/g, "\\n");  // Escape newlines in strings
+    
+    try {
+      return JSON.parse(cleaned);
+    } catch (cleanError) {
+      console.error("JSON parse error:", cleanError.message);
+      console.error("Cleaned JSON:", cleaned.substring(0, 500));
+      throw new Error(`Invalid JSON from model: ${cleanError.message}`);
+    }
   }
 }
 
@@ -266,67 +210,16 @@ function validateFiles(payload) {
   if (!payload || !Array.isArray(payload.files) || payload.files.length === 0) {
     throw new Error("Generated payload is missing files.");
   }
-
   return payload.files.map((file) => {
     if (!file || typeof file.name !== "string" || typeof file.content !== "string") {
       throw new Error("Generated payload contains an invalid file.");
     }
-
-    return {
-      name: sanitizeRelativePath(file.name),
-      content: file.content,
-    };
+    return { name: file.name, content: file.content };
   });
-}
-
-async function ensureProjectsDir() {
-  await fs.mkdir(projectsDir, { recursive: true });
-}
-
-async function writeProjectFiles(projectId, files) {
-  const projectPath = path.join(projectsDir, projectId);
-  await fs.mkdir(projectPath, { recursive: true });
-
-  for (const file of files) {
-    const filePath = path.join(projectPath, file.name);
-    // Support nested output like assets/style.css if the model returns it.
-    await fs.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.writeFile(filePath, file.content, "utf8");
-  }
-
-  return projectPath;
-}
-
-async function listProjectFiles(projectPath, currentDir = projectPath, prefix = "") {
-  const entries = await fs.readdir(currentDir, { withFileTypes: true });
-  const files = [];
-
-  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-    const absolutePath = path.join(currentDir, entry.name);
-    const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
-
-    if (entry.isDirectory()) {
-      files.push(...(await listProjectFiles(projectPath, absolutePath, relativePath)));
-      continue;
-    }
-
-    files.push(relativePath);
-  }
-
-  return files;
-}
-
-async function getProjectPath(projectId) {
-  const safeId = sanitizeRelativePath(projectId);
-  const projectPath = path.join(projectsDir, safeId);
-  await fs.access(projectPath);
-  return projectPath;
 }
 
 async function fetchGeneratedFiles(prompt) {
-  if (!groqApiKey) {
-    throw new Error("GROQ_API_KEY is not set in environment variables.");
-  }
+  if (!groqApiKey) throw new Error("GROQ_API_KEY is not set.");
 
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
@@ -336,12 +229,7 @@ async function fetchGeneratedFiles(prompt) {
     },
     body: JSON.stringify({
       model: groqModel,
-      messages: [
-        {
-          role: "user",
-          content: buildGenerationPrompt(prompt),
-        },
-      ],
+      messages: [{ role: "user", content: buildGenerationPrompt(prompt) }],
       temperature: 0.3,
       max_tokens: 16000,
     }),
@@ -349,7 +237,7 @@ async function fetchGeneratedFiles(prompt) {
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Groq API request failed with status ${response.status}: ${errorText}`);
+    throw new Error(`Groq API failed: ${response.status} - ${errorText}`);
   }
 
   const payload = await response.json();
@@ -357,202 +245,243 @@ async function fetchGeneratedFiles(prompt) {
   return validateFiles(parsed);
 }
 
-async function fetchEditedFiles(prompt, existingFiles) {
-  if (!groqApiKey) {
-    throw new Error("GROQ_API_KEY is not set in environment variables.");
-  }
-
-  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${groqApiKey}`,
-    },
-    body: JSON.stringify({
-      model: groqModel,
-      messages: [
-        {
-          role: "user",
-          content: buildEditPrompt(prompt, existingFiles),
-        },
-      ],
-      temperature: 0.3,
-      max_tokens: 16000,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Groq API request failed with status ${response.status}: ${errorText}`);
-  }
-
-  const payload = await response.json();
-  const parsed = extractJson(payload.choices?.[0]?.message?.content ?? "");
-  return validateFiles(parsed);
-}
-
+// Health check
 app.get("/api/health", async (_req, res) => {
+  res.json({ ok: true, model: groqModel, provider: "Groq", database: "MongoDB" });
+});
+
+// Create new project
+app.post("/api/projects", async (req, res) => {
+  const prompt = String(req.body?.prompt ?? "").trim();
+  const name = String(req.body?.name ?? "").trim() || "Untitled Project";
+
+  if (!prompt) return res.status(400).json({ error: "Prompt is required." });
+
   try {
-    await ensureProjectsDir();
-    res.json({ ok: true, model: groqModel, provider: "Groq" });
+    console.log(`📝 Generating project: "${name}"`);
+    const files = await fetchGeneratedFiles(prompt);
+    console.log(`✅ Generated ${files.length} files`);
+    
+    const projectId = createProjectId();
+    
+    const project = new Project({
+      projectId,
+      name,
+      prompt,
+      files,
+      previewUrl: `/api/projects/${projectId}/preview/index.html`,
+    });
+
+    await project.save();
+    console.log(`💾 Saved project: ${projectId}`);
+
+    res.status(201).json({
+      projectId: project.projectId,
+      name: project.name,
+      files: project.files.map((f) => f.name),
+      previewUrl: project.previewUrl,
+      createdAt: project.createdAt,
+    });
+  } catch (error) {
+    console.error("❌ Error creating project:", error.message);
+    console.error("Stack:", error.stack);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get all projects
+app.get("/api/projects", async (_req, res) => {
+  try {
+    const projects = await Project.find()
+      .select("projectId name description prompt thumbnail createdAt updatedAt")
+      .sort({ createdAt: -1 })
+      .lean();  // Return plain JS objects instead of Mongoose documents
+    res.json({ projects });
+  } catch (error) {
+    console.error("❌ Error fetching projects:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get single project
+app.get("/api/projects/:projectId", async (req, res) => {
+  try {
+    const project = await Project.findOne({ projectId: req.params.projectId });
+    if (!project) return res.status(404).json({ error: "Project not found." });
+    
+    res.json({
+      projectId: project.projectId,
+      name: project.name,
+      description: project.description,
+      files: project.files.map((f) => f.name),
+      createdAt: project.createdAt,
+      updatedAt: project.updatedAt,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+// AI Edit project
+app.post("/api/projects/:projectId/edit", async (req, res) => {
+  const { prompt } = req.body;
+  if (!prompt) return res.status(400).json({ error: "Prompt is required." });
+
+  try {
+    const project = await Project.findOne({ projectId: req.params.projectId });
+    if (!project) return res.status(404).json({ error: "Project not found." });
+
+    // Build edit prompt with current files
+    const currentFiles = project.files.map(f => `${f.name}:\n${f.content}`).join("\n\n---\n\n");
+    const editPrompt = `You are editing an existing website. Make the requested changes while keeping the design premium and professional.
+
+CURRENT FILES:
+${currentFiles}
+
+USER REQUEST: ${prompt}
+
+IMPORTANT RULES:
+1. Return COMPLETE files (not just changes)
+2. Keep existing images and design unless explicitly changing them
+3. Maintain Tailwind CDN and responsive design
+4. Fix any JavaScript errors (check for null elements before addEventListener)
+5. Only include files that actually exist (no phantom CSS/JS references)
+6. Use inline styles or Tailwind classes only (no separate CSS files unless needed)
+
+Return JSON: { "files": [{"name": "...", "content": "..."}] }`;
+
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${groqApiKey}`,
+      },
+      body: JSON.stringify({
+        model: groqModel,
+        messages: [{ role: "user", content: editPrompt }],
+        temperature: 0.3,
+        max_tokens: 16000,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Groq API failed: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    const rawText = data.choices?.[0]?.message?.content ?? "";
+    const payload = extractJson(rawText);
+    const files = validateFiles(payload);
+
+    // Update project files
+    project.files = files;
+    await project.save();
+
+    res.json({
+      projectId: project.projectId,
+      files: files.map((f) => f.name),
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+// Get project file
+app.get("/api/projects/:projectId/file", async (req, res) => {
+  const filePath = String(req.query.path ?? "");
+  if (!filePath) return res.status(400).json({ error: "File path is required." });
+
+  try {
+    const project = await Project.findOne({ projectId: req.params.projectId });
+    if (!project) return res.status(404).json({ error: "Project not found." });
+
+    const file = project.files.find((f) => f.name === filePath);
+    if (!file) return res.status(404).json({ error: "File not found." });
+
+    res.json({ path: file.name, content: file.content });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-app.post("/api/projects", async (req, res) => {
-  const prompt = String(req.body?.prompt ?? "").trim();
-
-  if (!prompt) {
-    return res.status(400).json({ error: "Prompt is required." });
-  }
-
-  try {
-    await ensureProjectsDir();
-    const files = await fetchGeneratedFiles(prompt);
-    const projectId = createProjectId();
-    await writeProjectFiles(projectId, files);
-
-    res.status(201).json({
-      projectId,
-      files: files.map((file) => file.name),
-      previewUrl: `/api/projects/${projectId}/preview/index.html`,
-    });
-  } catch (error) {
-    const message =
-      error.cause?.code === "ECONNREFUSED"
-        ? "Could not reach Ollama. Start Ollama and try again."
-        : error.message;
-
-    res.status(500).json({ error: message });
-  }
-});
-
-app.post("/api/projects/:projectId/edit", async (req, res) => {
-  const prompt = String(req.body?.prompt ?? "").trim();
-
-  if (!prompt) {
-    return res.status(400).json({ error: "Prompt is required." });
-  }
-
-  try {
-    const projectPath = await getProjectPath(req.params.projectId);
-    const fileList = await listProjectFiles(projectPath);
-    
-    // Read all existing files
-    const existingFiles = await Promise.all(
-      fileList.map(async (fileName) => {
-        const filePath = path.join(projectPath, fileName);
-        const content = await fs.readFile(filePath, "utf8");
-        return { name: fileName, content };
-      })
-    );
-
-    // Generate edited files
-    const updatedFiles = await fetchEditedFiles(prompt, existingFiles);
-    
-    // Write updated files back
-    await writeProjectFiles(req.params.projectId, updatedFiles);
-
-    res.json({
-      projectId: req.params.projectId,
-      files: updatedFiles.map((file) => file.name),
-      previewUrl: `/api/projects/${req.params.projectId}/preview/index.html`,
-    });
-  } catch (error) {
-    const message =
-      error.cause?.code === "ECONNREFUSED"
-        ? "Could not reach AI service."
-        : error.message;
-
-    res.status(500).json({ error: message });
-  }
-});
-
-app.get("/api/projects/:projectId", async (req, res) => {
-  try {
-    const projectPath = await getProjectPath(req.params.projectId);
-    const files = await listProjectFiles(projectPath);
-    res.json({ projectId: req.params.projectId, files });
-  } catch {
-    res.status(404).json({ error: "Project not found." });
-  }
-});
-
-app.get("/api/projects/:projectId/file", async (req, res) => {
-  const requestedPath = String(req.query.path ?? "");
-
-  if (!requestedPath) {
-    return res.status(400).json({ error: "File path is required." });
-  }
-
-  try {
-    const projectPath = await getProjectPath(req.params.projectId);
-    const safePath = sanitizeRelativePath(requestedPath);
-    const filePath = path.join(projectPath, safePath);
-    const content = await fs.readFile(filePath, "utf8");
-    res.json({ path: safePath, content });
-  } catch {
-    res.status(404).json({ error: "File not found." });
-  }
-});
-
+// Update project file
 app.put("/api/projects/:projectId/file", async (req, res) => {
-  const requestedPath = String(req.body?.path ?? "");
+  const filePath = String(req.body?.path ?? "");
   const content = String(req.body?.content ?? "");
 
-  if (!requestedPath) {
-    return res.status(400).json({ error: "File path is required." });
-  }
+  if (!filePath) return res.status(400).json({ error: "File path is required." });
 
   try {
-    const projectPath = await getProjectPath(req.params.projectId);
-    const safePath = sanitizeRelativePath(requestedPath);
-    const filePath = path.join(projectPath, safePath);
-    await fs.writeFile(filePath, content, "utf8");
+    const project = await Project.findOne({ projectId: req.params.projectId });
+    if (!project) return res.status(404).json({ error: "Project not found." });
+
+    const file = project.files.find((f) => f.name === filePath);
+    if (!file) return res.status(404).json({ error: "File not found." });
+
+    file.content = content;
+    await project.save();
+
     res.json({ ok: true });
-  } catch {
-    res.status(404).json({ error: "Unable to save file." });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
-app.get("/api/projects/:projectId/download", async (req, res) => {
+// Update project metadata
+app.put("/api/projects/:projectId", async (req, res) => {
+  const { name, description } = req.body;
+
   try {
-    const projectPath = await getProjectPath(req.params.projectId);
-    const archive = archiver("zip", { zlib: { level: 9 } });
+    const project = await Project.findOne({ projectId: req.params.projectId });
+    if (!project) return res.status(404).json({ error: "Project not found." });
 
-    res.attachment(`${req.params.projectId}.zip`);
-    archive.on("error", (error) => {
-      console.error(error);
+    if (name) project.name = name;
+    if (description !== undefined) project.description = description;
+    
+    await project.save();
 
-      if (!res.headersSent) {
-        res.status(500).json({ error: "Failed to create ZIP archive." });
-      } else {
-        res.end();
-      }
-    });
-
-    archive.pipe(res);
-    archive.directory(projectPath, false);
-    await archive.finalize();
-  } catch {
-    res.status(404).json({ error: "Project not found." });
+    res.json({ ok: true, project: {
+      projectId: project.projectId,
+      name: project.name,
+      description: project.description,
+    }});
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
+// Delete project
+app.delete("/api/projects/:projectId", async (req, res) => {
+  try {
+    const result = await Project.deleteOne({ projectId: req.params.projectId });
+    if (result.deletedCount === 0) return res.status(404).json({ error: "Project not found." });
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Preview project files
 app.get("/api/projects/:projectId/preview/*", async (req, res) => {
   try {
-    const projectPath = await getProjectPath(req.params.projectId);
-    const fileParam = req.params[0] || "index.html";
-    const safePath = sanitizeRelativePath(fileParam);
-    const filePath = path.join(projectPath, safePath);
-    res.sendFile(filePath);
-  } catch {
-    res.status(404).send("Preview file not found.");
+    const project = await Project.findOne({ projectId: req.params.projectId });
+    if (!project) return res.status(404).send("Project not found.");
+
+    const fileName = req.params[0] || "index.html";
+    const file = project.files.find((f) => f.name === fileName);
+    
+    if (!file) return res.status(404).send("File not found.");
+
+    // Set appropriate content type
+    if (fileName.endsWith(".html")) res.type("html");
+    else if (fileName.endsWith(".css")) res.type("css");
+    else if (fileName.endsWith(".js")) res.type("js");
+
+    res.send(file.content);
+  } catch (error) {
+    res.status(500).send("Error loading preview.");
   }
 });
 
-app.listen(port, async () => {
-  await ensureProjectsDir();
-  console.log(`Server listening on http://localhost:${port}`);
+app.listen(port, () => {
+  console.log(`🚀 Server listening on http://localhost:${port}`);
 });
