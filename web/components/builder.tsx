@@ -12,7 +12,7 @@ import {
 } from "@/lib/api";
 
 const starterPrompt =
-  "Build a portfolio website with dark theme, about section and contact form.";
+  "Build a stunning SaaS landing page with gradient hero section, animated feature cards with icons, glass morphism pricing cards, and testimonials. Use vibrant purple and pink gradients with modern animations.";
 
 function languageFromPath(filePath: string) {
   if (filePath.endsWith(".html")) return "html";
@@ -51,7 +51,7 @@ export function Builder() {
   async function handleGenerate() {
     setLoading(true);
     setError("");
-    setStatus("Generating website files with Groq AI...");
+    setStatus("Generating professional website with AI...");
 
     try {
       const project = await createProject(prompt);
@@ -214,11 +214,11 @@ export function Builder() {
               Minimal Open-Source Builder
             </p>
             <h1 className="mt-2 text-3xl font-semibold text-white">
-              Generate small websites from one prompt
+              Generate professional websites with AI
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-slate-300">
-              Next.js frontend, Express API, Monaco editor, live preview with auto-save, and
-              Groq-powered generation saved directly to the filesystem.
+              Create stunning, modern websites with professional design, free Unsplash images,
+              smooth animations, and production-ready code. Powered by Groq AI.
             </p>
           </div>
           <div className="rounded-2xl border border-slate-800 bg-slate-950/70 px-4 py-3 text-sm text-slate-300">
@@ -239,13 +239,13 @@ export function Builder() {
 
         <label className="block">
           <span className="mb-2 block text-sm font-medium text-slate-200">
-            Website prompt
+            Website description
           </span>
           <textarea
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
             className="h-32 w-full rounded-2xl border border-slate-700 bg-slate-950/90 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-sky-400"
-            placeholder={starterPrompt}
+            placeholder="e.g., Modern restaurant website with image gallery, menu section, online reservation form, and contact details. Use warm orange and brown tones..."
           />
         </label>
 
@@ -279,21 +279,21 @@ export function Builder() {
       {projectId ? (
         <section className="rounded-3xl border border-slate-800 bg-slate-900/70 p-6 shadow-glow backdrop-blur">
           <div className="mb-4">
-            <h2 className="text-lg font-semibold text-white">AI Edit Mode</h2>
+            <h2 className="text-lg font-semibold text-white">✨ AI Edit Mode</h2>
             <p className="mt-1 text-sm text-slate-300">
-              Describe changes to make to your existing website
+              Refine your website with natural language commands
             </p>
           </div>
 
           <label className="block">
             <span className="mb-2 block text-sm font-medium text-slate-200">
-              Edit prompt
+              What would you like to change?
             </span>
             <textarea
               value={editPrompt}
               onChange={(event) => setEditPrompt(event.target.value)}
               className="h-24 w-full rounded-2xl border border-slate-700 bg-slate-950/90 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-sky-400"
-              placeholder="e.g., Make the background gradient blue to purple, add a hero section, change the font to Inter..."
+              placeholder="e.g., Add a blog section with 3 posts, change color scheme to purple and pink gradient, add animation to the hero section, make the font sizes bigger..."
             />
           </label>
 
@@ -310,7 +310,7 @@ export function Builder() {
         </section>
       ) : null}
 
-      <section className="grid flex-1 gap-6 lg:grid-cols-[260px_minmax(0,1fr)_minmax(320px,420px)]">
+      <section className="grid flex-1 gap-6 lg:grid-cols-[220px_minmax(0,1fr)_minmax(0,1.5fr)]">
         <aside className="rounded-3xl border border-slate-800 bg-slate-900/70 p-4">
           <div className="mb-4 text-sm font-semibold text-slate-200">Files</div>
           <div className="space-y-2">
@@ -368,19 +368,35 @@ export function Builder() {
           <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
             <div>
               <div className="text-sm font-semibold text-slate-200">Live preview</div>
-              <div className="text-xs text-slate-500">Renders index.html</div>
+              <div className="text-xs text-slate-500">Desktop view • 100% zoom</div>
             </div>
+            {previewUrl ? (
+              <a
+                href={previewUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs font-medium text-slate-100 transition hover:border-sky-400 hover:text-sky-300"
+              >
+                Open in New Tab ↗
+              </a>
+            ) : null}
           </div>
 
           {previewUrl ? (
-            <iframe
-              key={previewUrl}
-              src={previewUrl}
-              title="Website preview"
-              className="h-[520px] w-full bg-white"
-            />
+            <div className="relative h-[calc(100vh-280px)] min-h-[600px] w-full overflow-auto bg-white">
+              <iframe
+                key={previewUrl}
+                src={previewUrl}
+                title="Website preview"
+                className="h-full w-full border-0"
+                style={{
+                  transform: 'scale(1)',
+                  transformOrigin: 'top left',
+                }}
+              />
+            </div>
           ) : (
-            <div className="flex h-[520px] items-center justify-center px-6 text-center text-sm text-slate-500">
+            <div className="flex h-[600px] items-center justify-center px-6 text-center text-sm text-slate-500">
               Generate a project to preview the output.
             </div>
           )}

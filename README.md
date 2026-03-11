@@ -1,13 +1,25 @@
-# AI Website Builder
+# Professional AI Website Builder
 
-Minimal open-source AI website builder using:
+Create stunning, production-ready websites with AI:
 
-- Next.js frontend
-- Express backend
-- Tailwind CSS
-- Monaco Editor
-- Groq API for cloud AI generation (free tier)
-- Filesystem-based project storage
+- Next.js frontend with live editor
+- Express backend API
+- Monaco code editor with auto-save
+- Groq AI for intelligent generation
+- Free Unsplash images integration
+- Modern CSS with animations
+- Professional, semantic code
+- Filesystem-based storage
+
+## Features
+
+- 🎨 **Professional Design**: Modern layouts, gradients, animations
+- 🖼️ **Free Images**: Automatic Unsplash integration
+- 💻 **Clean Code**: Semantic HTML5, modern CSS, ES6+ JavaScript
+- ⚡ **Live Editing**: Auto-save with instant preview
+- 🤖 **AI Powered**: Natural language generation and editing
+- 📱 **Responsive**: Mobile-first, production-ready
+- 🎯 **Smart Content**: AI-generated professional copy
 
 ## Requirements
 
@@ -15,44 +27,46 @@ Minimal open-source AI website builder using:
 - npm 10+
 - Groq API key (free at https://console.groq.com)
 
-## Setup
+## Quick Start
 
-1. Install dependencies:
-
+1. **Install dependencies**:
 ```bash
 npm install
 ```
 
-2. Get your free Groq API key:
+2. **Get your free Groq API key**:
    - Visit https://console.groq.com
    - Sign up for a free account
    - Create an API key
 
-3. Copy environment files and add your API key:
-
+3. **Configure environment**:
 ```bash
 cp server/.env.example server/.env
-cp web/.env.local.example web/.env.local
 ```
+Edit `server/.env` and add your Groq API key
 
-4. Run the apps:
-
+4. **Launch**:
 ```bash
 npm run dev
 ```
 
-Frontend: `http://localhost:3000`
-
+Frontend: `http://localhost:3000`  
 Backend: `http://localhost:4000`
 
-Generated projects are written to `./projects/<project-id>`.
+## Usage
 
-## Features
+1. **Generate**: Describe your website in natural language
+2. **Edit**: Use AI to refine and modify
+3. **Code**: Edit directly in Monaco editor with auto-save
+4. **Preview**: See changes instantly
+5. **Download**: Export as ZIP
 
-- Natural language prompt input
-- Groq-powered file generation (fast & free)
-- Filesystem project storage
-- File explorer and Monaco code editor
-- Live HTML preview in an iframe
-- Project download as ZIP
-- Dark UI with basic error handling
+Generated projects: `./projects/<project-id>`
+
+## Examples
+
+Try these prompts:
+- "Modern SaaS landing page with pricing tiers and testimonials"
+- "Restaurant website with menu, gallery, and reservation form"
+- "Portfolio for a photographer with image grid and about section"
+- "Tech startup page with animated hero and feature showcase"
