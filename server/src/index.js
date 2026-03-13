@@ -172,35 +172,36 @@ CREATE PREMIUM WEBSITE WITH:
 }
 
 function extractJson(rawText) {
+  if (!rawText || typeof rawText !== "string") {
+    throw new Error("Model returned empty response.");
+  }
+
   try {
     return JSON.parse(rawText);
   } catch (firstError) {
     // Try to extract JSON from markdown code blocks
-    const codeBlockMatch = rawText.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+    const codeBlockMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
     if (codeBlockMatch) {
       try {
-        return JSON.parse(codeBlockMatch[1]);
+        return JSON.parse(codeBlockMatch[1].trim());
       } catch {}
     }
     
-    // Try to find JSON object in the text
-    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
+    // Try to recover JSON object between first "{" and last "}"
+    const start = rawText.indexOf("{");
+    const end = rawText.lastIndexOf("}");
+    if (start === -1 || end === -1 || end <= start) {
       console.error("Failed to extract JSON. Raw response:", rawText.substring(0, 500));
       throw new Error("Model did not return valid JSON. Check server logs for details.");
     }
-    
-    // Clean common issues: remove backticks, fix escaped quotes
-    let cleaned = jsonMatch[0]
-      .replace(/`/g, '"')  // Replace backticks with quotes
-      .replace(/\\'/g, "'")  // Unescape single quotes
-      .replace(/\n/g, "\\n");  // Escape newlines in strings
+
+    const candidate = rawText.slice(start, end + 1).trim();
     
     try {
-      return JSON.parse(cleaned);
+      return JSON.parse(candidate);
     } catch (cleanError) {
       console.error("JSON parse error:", cleanError.message);
-      console.error("Cleaned JSON:", cleaned.substring(0, 500));
+      console.error("Candidate JSON:", candidate.substring(0, 500));
       throw new Error(`Invalid JSON from model: ${cleanError.message}`);
     }
   }
@@ -230,6 +231,7 @@ async function fetchGeneratedFiles(prompt) {
     body: JSON.stringify({
       model: groqModel,
       messages: [{ role: "user", content: buildGenerationPrompt(prompt) }],
+      response_format: { type: "json_object" },
       temperature: 0.3,
       max_tokens: 16000,
     }),
@@ -358,6 +360,7 @@ Return JSON: { "files": [{"name": "...", "content": "..."}] }`;
       body: JSON.stringify({
         model: groqModel,
         messages: [{ role: "user", content: editPrompt }],
+        response_format: { type: "json_object" },
         temperature: 0.3,
         max_tokens: 16000,
       }),
