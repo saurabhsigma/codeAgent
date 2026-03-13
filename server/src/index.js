@@ -585,6 +585,12 @@ app.get("/api/projects/:projectId/preview/*", async (req, res) => {
   }
 });
 
-app.listen(port, () => {
-  console.log(`Server listening on http://localhost:${port}`);
-});
+// When running locally start the HTTP server; on Vercel the app is exported
+// below and invoked as a serverless function by @vercel/node.
+if (process.env.VERCEL !== "1") {
+  app.listen(port, () => {
+    console.log(`Server listening on http://localhost:${port}`);
+  });
+}
+
+export default app;
