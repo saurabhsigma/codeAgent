@@ -1,22 +1,22 @@
 const apiBaseUrl =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
 
-type ProjectResponse = {
+export type ProjectListItem = {
   projectId: string;
   name: string;
-  files: string[];
-  previewUrl: string;
-  createdAt: string;
-};
-
-type ProjectListItem = {
-  projectId: string;
-  name: string;
+  ownerName: string;
   description: string;
   prompt: string;
   thumbnail: string;
   createdAt: string;
   updatedAt: string;
+  isPublic: boolean;
+  previewUrl: string;
+  sharePath: string;
+};
+
+export type ProjectResponse = ProjectListItem & {
+  files: string[];
 };
 
 type FileResponse = {
@@ -24,88 +24,183 @@ type FileResponse = {
   content: string;
 };
 
-type ProjectFilesResponse = {
-  projectId: string;
-  files: string[];
+export type AuthUser = {
+  id: string;
+  name: string;
+  email: string;
 };
+
+export type AuthSession = AuthUser & {
+  token: string;
+};
+
+export const sessionStorageKey = "studio-session";
+
+function getAuthHeaders(): Record<string, string> {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  try {
+    const raw = window.localStorage.getItem(sessionStorageKey);
+
+    if (!raw) {
+      return {};
+    }
+
+    const session = JSON.parse(raw) as AuthSession;
+
+    if (!session?.token) {
+      return {};
+    }
+
+    return {
+      Authorization: `Bearer ${session.token}`,
+    };
+  } catch {
+    return {};
+  }
+}
 
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const fallbackMessage = "Request failed.";
-    let errorMessage = fallbackMessage;
 
     try {
       const error = (await response.json()) as { error?: string };
-      errorMessage = error.error ?? fallbackMessage;
-    } catch {
-      errorMessage = fallbackMessage;
+      throw new Error(error.error ?? fallbackMessage);
+    } catch (error) {
+      throw error instanceof Error ? error : new Error(fallbackMessage);
     }
-
-    throw new Error(errorMessage);
   }
 
   return (await response.json()) as T;
 }
 
-export async function createProject(prompt: string, name?: string) {
-  const response = await fetch(`${apiBaseUrl}/api/projects`, {
+async function fetchApi<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers);
+  const workspaceHeaders = getAuthHeaders();
+
+  Object.entries(workspaceHeaders).forEach(([key, value]) => {
+    headers.set(key, value);
+  });
+
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    ...init,
+    headers,
+  });
+
+  return handleResponse<T>(response);
+}
+
+// ── Auth ─────────────────────────────────────────────────────────────────────
+
+export async function apiSignup(name: string, email: string, password: string) {
+  return fetchApi<{ token: string; user: AuthUser }>("/api/auth/signup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, email, password }),
+  });
+}
+
+export async function apiLogin(email: string, password: string) {
+  return fetchApi<{ token: string; user: AuthUser }>("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export async function apiMe(token: string) {
+  const response = await fetch(`${apiBaseUrl}/api/auth/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return handleResponse<{ user: AuthUser }>(response);
+}
+
+// ── Projects ──────────────────────────────────────────────────────────────────
+
+export async function createProject(
+  prompt: string,
+  name?: string,
+  description?: string,
+) {
+  return fetchApi<ProjectResponse>("/api/projects", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ prompt, name }),
+    body: JSON.stringify({ prompt, name, description }),
   });
-
-  return handleResponse<ProjectResponse>(response);
 }
 
 export async function getAllProjects() {
-  const response = await fetch(`${apiBaseUrl}/api/projects`);
-  return handleResponse<{ projects: ProjectListItem[] }>(response);
+  return fetchApi<{ projects: ProjectListItem[] }>("/api/projects");
 }
 
-export async function updateProjectMetadata(projectId: string, name: string, description?: string) {
-  const response = await fetch(`${apiBaseUrl}/api/projects/${projectId}`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ name, description }),
-  });
+export async function getProject(projectId: string) {
+  return fetchApi<ProjectResponse>(`/api/projects/${projectId}`);
+}
 
-  return handleResponse<{ ok: boolean }>(response);
+export async function getPublicProject(projectId: string) {
+  return fetchApi<ProjectResponse>(`/api/public/projects/${projectId}`);
+}
+
+export async function updateProjectMetadata(
+  projectId: string,
+  payload: { name?: string; description?: string; isPublic?: boolean },
+) {
+  return fetchApi<{ ok: boolean; project: ProjectListItem }>(
+    `/api/projects/${projectId}`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export async function toggleProjectSharing(projectId: string, isPublic: boolean) {
+  return fetchApi<{ ok: boolean; project: ProjectListItem }>(
+    `/api/projects/${projectId}/share`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ isPublic }),
+    },
+  );
 }
 
 export async function deleteProject(projectId: string) {
-  const response = await fetch(`${apiBaseUrl}/api/projects/${projectId}`, {
+  return fetchApi<{ ok: boolean }>(`/api/projects/${projectId}`, {
     method: "DELETE",
   });
-
-  return handleResponse<{ ok: boolean }>(response);
 }
 
 export async function editProject(projectId: string, prompt: string) {
-  const response = await fetch(`${apiBaseUrl}/api/projects/${projectId}/edit`, {
+  return fetchApi<ProjectResponse>(`/api/projects/${projectId}/edit`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ prompt }),
   });
-
-  return handleResponse<ProjectResponse>(response);
-}
-
-export async function getProject(projectId: string) {
-  const response = await fetch(`${apiBaseUrl}/api/projects/${projectId}`);
-  return handleResponse<ProjectFilesResponse>(response);
 }
 
 export async function getProjectFile(projectId: string, filePath: string) {
   const url = new URL(`${apiBaseUrl}/api/projects/${projectId}/file`);
   url.searchParams.set("path", filePath);
 
-  const response = await fetch(url.toString());
+  const response = await fetch(url.toString(), {
+    headers: {
+      ...getAuthHeaders(),
+    },
+  });
+
   return handleResponse<FileResponse>(response);
 }
 
@@ -114,19 +209,20 @@ export async function saveProjectFile(
   filePath: string,
   content: string,
 ) {
-  const response = await fetch(`${apiBaseUrl}/api/projects/${projectId}/file`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
+  return fetchApi<{ ok: boolean; updatedAt: string }>(
+    `/api/projects/${projectId}/file`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ path: filePath, content }),
     },
-    body: JSON.stringify({ path: filePath, content }),
-  });
-
-  return handleResponse<{ ok: boolean }>(response);
+  );
 }
 
-export function getPreviewUrl(projectId: string) {
-  return `${apiBaseUrl}/api/projects/${projectId}/preview/index.html`;
+export function getPreviewUrl(projectId: string, filePath = "index.html") {
+  return `${apiBaseUrl}/api/projects/${projectId}/preview/${filePath}`;
 }
 
 export function getDownloadUrl(projectId: string) {

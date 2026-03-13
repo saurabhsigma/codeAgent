@@ -22,6 +22,15 @@ const projectSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  ownerId: {
+    type: String,
+    required: true,
+    index: true,
+  },
+  ownerName: {
+    type: String,
+    default: "Workspace Owner",
+  },
   description: {
     type: String,
     default: "",
@@ -37,6 +46,10 @@ const projectSchema = new mongoose.Schema({
   },
   previewUrl: {
     type: String,
+  },
+  isPublic: {
+    type: Boolean,
+    default: false,
   },
   createdAt: {
     type: Date,

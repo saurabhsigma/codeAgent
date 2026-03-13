@@ -2,11 +2,13 @@
 
 import Editor from "@monaco-editor/react";
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { StudioShell } from "@/components/studio-shell";
 import {
   createProject,
   editProject,
   getDownloadUrl,
+  getProject,
   getPreviewUrl,
   getProjectFile,
   saveProjectFile,
@@ -26,6 +28,7 @@ function languageFromPath(filePath: string) {
 
 export function Builder() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [prompt, setPrompt] = useState(starterPrompt);
   const [projectName, setProjectName] = useState("");
   const [editPrompt, setEditPrompt] = useState("");
@@ -45,10 +48,35 @@ export function Builder() {
     [projectId, previewKey],
   );
 
+  const existingProjectId = searchParams.get("project")?.trim() ?? "";
+
   async function loadFile(project: string, filePath: string) {
     const file = await getProjectFile(project, filePath);
     setSelectedFile(file.path);
     setContent(file.content);
+  }
+
+  async function loadProject(projectToLoad: string) {
+    const project = await getProject(projectToLoad);
+
+    setProjectId(project.projectId);
+    setProjectName(project.name);
+    setPrompt(project.prompt);
+    setFiles(project.files);
+    setStatus(`Loaded ${project.name}`);
+
+    const preferredFile = project.files.includes("index.html")
+      ? "index.html"
+      : project.files[0] ?? "";
+
+    if (preferredFile) {
+      await loadFile(project.projectId, preferredFile);
+    } else {
+      setSelectedFile("");
+      setContent("");
+    }
+
+    setPreviewKey((value) => value + 1);
   }
 
   async function handleGenerate() {
@@ -62,6 +90,7 @@ export function Builder() {
       setFiles(project.files);
       setStatus(`Generated ${project.files.length} files.`);
       setProjectName(project.name);
+      router.replace(`/builder?project=${project.projectId}`);
 
       const initialFile = project.files[0] ?? "";
       if (initialFile) {
@@ -93,6 +122,8 @@ export function Builder() {
 
     try {
       const project = await editProject(projectId, editPrompt);
+      setProjectId(project.projectId);
+      setProjectName(project.name);
       setFiles(project.files);
       setStatus(`Updated ${project.files.length} files.`);
       setEditPrompt("");
@@ -209,73 +240,92 @@ export function Builder() {
     }
   }, [files]);
 
-  return (
-    <main className="mx-auto flex min-h-screen max-w-7xl flex-col gap-6 px-4 py-6 lg:px-6">
-      <section className="rounded-3xl border border-slate-800 bg-slate-900/70 p-6 shadow-glow backdrop-blur">
-        <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div className="flex-1">
-            <div className="flex items-center gap-4 mb-4">
-              <button
-                onClick={() => router.push('/dashboard')}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors flex items-center gap-2"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                </svg>
-                Back to Dashboard
-              </button>
-            </div>
-            <p className="text-sm uppercase tracking-[0.3em] text-sky-400">
-              Minimal Open-Source Builder
-            </p>
-            <h1 className="mt-2 text-3xl font-semibold text-white">
-              Generate professional websites with AI
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm text-slate-300">
-              Create stunning, modern websites with professional design, free Unsplash images,
-              smooth animations, and production-ready code. Powered by Groq AI.
-            </p>
-          </div>
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/70 px-4 py-3 text-sm text-slate-300">
-            <div className="flex items-center gap-2">
-              {saving && (
-                <svg className="h-4 w-4 animate-spin text-sky-400" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-              )}
-              <span>{status}</span>
-            </div>
-            {projectId ? (
-              <div className="mt-1 text-xs text-slate-500">Project: {projectId}</div>
-            ) : null}
-          </div>
-        </div>
+  useEffect(() => {
+    if (!existingProjectId) return;
 
-        <div className="mb-4">
+    void (async () => {
+      setLoading(true);
+      setError("");
+      setStatus("Loading project...");
+
+      try {
+        await loadProject(existingProjectId);
+      } catch (loadError) {
+        setError(loadError instanceof Error ? loadError.message : "Failed to load project.");
+        setStatus("Unable to load project.");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [existingProjectId]);
+
+  function resetBuilder() {
+    setProjectId("");
+    setProjectName("");
+    setPrompt(starterPrompt);
+    setEditPrompt("");
+    setFiles([]);
+    setSelectedFile("");
+    setContent("");
+    setPreviewKey(0);
+    setError("");
+    setStatus("Describe a website and generate it.");
+    router.replace("/builder");
+  }
+
+  return (
+    <StudioShell
+      eyebrow="Builder"
+      title="AI Website Builder"
+      description="Generate, edit, and ship production-ready multi-page websites with live code preview."
+      actions={
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={resetBuilder}
+            className="rounded-full border border-[var(--border-strong)] bg-[var(--surface-elevated)] px-4 py-2 text-sm text-[var(--text-secondary)] transition hover:text-[var(--text-primary)]"
+          >
+            New Session
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push("/dashboard")}
+            className="rounded-full border border-[var(--border-strong)] bg-[var(--surface-elevated)] px-4 py-2 text-sm text-[var(--text-secondary)] transition hover:text-[var(--text-primary)]"
+          >
+            Dashboard
+          </button>
+        </div>
+      }
+    >
+      <section className="rounded-[28px] border border-[var(--border-soft)] bg-[var(--surface)] p-6 shadow-[var(--shadow-panel)]">
+        <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-200">
-              Project Name
+            <span className="mb-2 block text-sm font-medium text-[var(--text-secondary)]">
+              Project name
             </span>
             <input
               type="text"
               value={projectName}
               onChange={(event) => setProjectName(event.target.value)}
-              className="w-full rounded-2xl border border-slate-700 bg-slate-950/90 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-sky-400"
-              placeholder="My Awesome Website"
+              className="w-full rounded-2xl border border-[var(--border-strong)] bg-[var(--surface-highlight)] px-4 py-3 text-sm text-[var(--text-primary)] outline-none transition focus:border-[var(--accent)]"
+              placeholder="My Studio Site"
             />
           </label>
+          <div className="rounded-2xl border border-[var(--border-soft)] bg-[var(--surface-elevated)] px-4 py-3 text-sm text-[var(--text-secondary)]">
+            {saving ? "Saving changes..." : status}
+            {projectId ? <div className="mt-1 text-xs text-[var(--text-muted)]">Project: {projectId}</div> : null}
+          </div>
         </div>
 
-        <label className="block">
-          <span className="mb-2 block text-sm font-medium text-slate-200">
-            Website description
+        <label className="mt-4 block">
+          <span className="mb-2 block text-sm font-medium text-[var(--text-secondary)]">
+            Build prompt
           </span>
           <textarea
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
-            className="h-32 w-full rounded-2xl border border-slate-700 bg-slate-950/90 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-sky-400"
-            placeholder="e.g., Modern restaurant website with image gallery, menu section, online reservation form, and contact details. Use warm orange and brown tones..."
+            className="h-32 w-full rounded-2xl border border-[var(--border-strong)] bg-[var(--surface-highlight)] px-4 py-3 text-sm text-[var(--text-primary)] outline-none transition focus:border-[var(--accent)]"
+            placeholder="Describe layout style, brand mood, colors, sections, and conversion goals..."
           />
         </label>
 
@@ -284,65 +334,62 @@ export function Builder() {
             type="button"
             onClick={handleGenerate}
             disabled={loading || !prompt.trim()}
-            className="rounded-2xl bg-sky-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-full bg-[var(--accent)] px-5 py-3 text-sm font-semibold text-[var(--accent-contrast)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {loading ? "Generating..." : "Generate project"}
+            {loading ? "Generating..." : projectId ? "Generate New Project" : "Generate Project"}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving || !projectId || !selectedFile}
+            className="rounded-full border border-[var(--border-strong)] bg-[var(--surface-elevated)] px-5 py-3 text-sm font-medium text-[var(--text-primary)] transition hover:border-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Save file
           </button>
 
           {projectId ? (
             <a
               href={getDownloadUrl(projectId)}
-              className="rounded-2xl border border-slate-700 bg-slate-950 px-5 py-3 text-sm font-medium text-slate-100 transition hover:border-sky-400"
+              className="rounded-full border border-[var(--border-strong)] bg-[var(--surface-elevated)] px-5 py-3 text-sm font-medium text-[var(--text-primary)] transition hover:border-[var(--accent)]"
             >
               Download ZIP
             </a>
           ) : null}
         </div>
 
+        {projectId ? (
+          <label className="mt-4 block">
+            <span className="mb-2 block text-sm font-medium text-[var(--text-secondary)]">
+              AI edit instruction
+            </span>
+            <textarea
+              value={editPrompt}
+              onChange={(event) => setEditPrompt(event.target.value)}
+              className="h-24 w-full rounded-2xl border border-[var(--border-strong)] bg-[var(--surface-highlight)] px-4 py-3 text-sm text-[var(--text-primary)] outline-none transition focus:border-[var(--accent)]"
+              placeholder="Add pricing tiers, improve hero copy, update palette, add testimonials carousel..."
+            />
+            <button
+              type="button"
+              onClick={handleEdit}
+              disabled={loading || !editPrompt.trim()}
+              className="mt-3 rounded-full border border-[var(--border-strong)] bg-[var(--surface-elevated)] px-5 py-3 text-sm font-medium text-[var(--text-primary)] transition hover:border-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loading ? "Applying edits..." : "Apply AI edit to this project"}
+            </button>
+          </label>
+        ) : null}
+
         {error ? (
-          <div className="mt-4 rounded-2xl border border-rose-900/60 bg-rose-950/40 px-4 py-3 text-sm text-rose-200">
+          <div className="mt-4 rounded-2xl border border-red-400/35 bg-red-500/10 px-4 py-3 text-sm text-red-300">
             {error}
           </div>
         ) : null}
       </section>
 
-      {projectId ? (
-        <section className="rounded-3xl border border-slate-800 bg-slate-900/70 p-6 shadow-glow backdrop-blur">
-          <div className="mb-4">
-            <h2 className="text-lg font-semibold text-white">✨ AI Edit Mode</h2>
-            <p className="mt-1 text-sm text-slate-300">
-              Refine your website with natural language commands
-            </p>
-          </div>
-
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-200">
-              What would you like to change?
-            </span>
-            <textarea
-              value={editPrompt}
-              onChange={(event) => setEditPrompt(event.target.value)}
-              className="h-24 w-full rounded-2xl border border-slate-700 bg-slate-950/90 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-sky-400"
-              placeholder="e.g., Add a blog section with 3 posts, change color scheme to purple and pink gradient, add animation to the hero section, make the font sizes bigger..."
-            />
-          </label>
-
-          <div className="mt-4">
-            <button
-              type="button"
-              onClick={handleEdit}
-              disabled={loading || !editPrompt.trim()}
-              className="rounded-2xl bg-purple-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-purple-400 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {loading ? "Editing..." : "Apply AI Edit"}
-            </button>
-          </div>
-        </section>
-      ) : null}
-
-      <section className="grid flex-1 gap-6 lg:grid-cols-[220px_minmax(0,1fr)_minmax(0,1.5fr)]">
-        <aside className="rounded-3xl border border-slate-800 bg-slate-900/70 p-4">
-          <div className="mb-4 text-sm font-semibold text-slate-200">Files</div>
+      <section className="mt-8 grid gap-6 lg:grid-cols-[240px_minmax(0,1fr)_minmax(0,1.25fr)]">
+        <aside className="rounded-[28px] border border-[var(--border-soft)] bg-[var(--surface)] p-4 shadow-[var(--shadow-panel)]">
+          <div className="mb-3 text-sm font-semibold text-[var(--text-primary)]">Files</div>
           <div className="space-y-2">
             {files.length ? (
               files.map((filePath) => (
@@ -350,34 +397,31 @@ export function Builder() {
                   key={filePath}
                   type="button"
                   onClick={() => void handleSelectFile(filePath)}
-                  className={`block w-full rounded-2xl px-3 py-2 text-left text-sm transition ${
+                  className={`block w-full rounded-xl px-3 py-2 text-left text-sm transition ${
                     selectedFile === filePath
-                      ? "bg-sky-400/20 text-sky-300"
-                      : "bg-slate-950/70 text-slate-300 hover:bg-slate-800"
+                      ? "border border-[var(--accent)] bg-[var(--surface-highlight)] text-[var(--text-primary)]"
+                      : "border border-transparent bg-[var(--surface-elevated)] text-[var(--text-secondary)] hover:border-[var(--border-strong)]"
                   }`}
                 >
                   {filePath}
                 </button>
               ))
             ) : (
-              <div className="rounded-2xl border border-dashed border-slate-800 px-3 py-6 text-sm text-slate-500">
-                Generated files will appear here.
+              <div className="rounded-xl border border-dashed border-[var(--border-soft)] px-3 py-6 text-sm text-[var(--text-muted)]">
+                Files will appear after generation.
               </div>
             )}
           </div>
         </aside>
 
-        <section className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/70">
-          <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
+        <section className="overflow-hidden rounded-[28px] border border-[var(--border-soft)] bg-[var(--surface)] shadow-[var(--shadow-panel)]">
+          <div className="flex items-center justify-between border-b border-[var(--border-soft)] px-4 py-3">
             <div>
-              <div className="text-sm font-semibold text-slate-200">Editor</div>
-              <div className="text-xs text-slate-500">
-                {selectedFile || "Select a file to edit"}
-              </div>
+              <div className="text-sm font-semibold text-[var(--text-primary)]">Code Editor</div>
+              <div className="text-xs text-[var(--text-muted)]">{selectedFile || "Select a file"}</div>
             </div>
           </div>
-
-          <div className="h-[520px]">
+          <div className="h-[540px]">
             <Editor
               theme="vs-dark"
               path={selectedFile}
@@ -394,44 +438,40 @@ export function Builder() {
           </div>
         </section>
 
-        <section className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/70">
-          <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
+        <section className="overflow-hidden rounded-[28px] border border-[var(--border-soft)] bg-[var(--surface)] shadow-[var(--shadow-panel)]">
+          <div className="flex items-center justify-between border-b border-[var(--border-soft)] px-4 py-3">
             <div>
-              <div className="text-sm font-semibold text-slate-200">Live preview</div>
-              <div className="text-xs text-slate-500">Desktop view • 100% zoom</div>
+              <div className="text-sm font-semibold text-[var(--text-primary)]">Live Preview</div>
+              <div className="text-xs text-[var(--text-muted)]">Real-time output from server</div>
             </div>
             {previewUrl ? (
               <a
                 href={previewUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs font-medium text-slate-100 transition hover:border-sky-400 hover:text-sky-300"
+                className="rounded-lg border border-[var(--border-strong)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--accent)]"
               >
-                Open in New Tab ↗
+                Open ↗
               </a>
             ) : null}
           </div>
 
           {previewUrl ? (
-            <div className="relative h-[calc(100vh-280px)] min-h-[600px] w-full overflow-auto bg-white">
+            <div className="relative h-[calc(100vh-290px)] min-h-[620px] w-full overflow-auto bg-white">
               <iframe
                 key={previewUrl}
                 src={previewUrl}
                 title="Website preview"
                 className="h-full w-full border-0"
-                style={{
-                  transform: 'scale(1)',
-                  transformOrigin: 'top left',
-                }}
               />
             </div>
           ) : (
-            <div className="flex h-[600px] items-center justify-center px-6 text-center text-sm text-slate-500">
-              Generate a project to preview the output.
+            <div className="flex h-[620px] items-center justify-center px-6 text-center text-sm text-[var(--text-muted)]">
+              Generate or load a project to preview.
             </div>
           )}
         </section>
       </section>
-    </main>
+    </StudioShell>
   );
 }
